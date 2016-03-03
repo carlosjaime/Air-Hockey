@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Air Hockey</title>
+		<style>
+			canvas {
+				border: 1px solid black;
+				background-image: url("../media/background.png");
+			}
+		</style>
+		
+		<!-- Load in socket.io -->
+		<script src="/socket.io/socket.io.js"></script>
+		<script>
+			"use strict";
+			
+			// Where we'll store the canvas and its context
+			var canvas;
+			var ctx;
+			
+			// The offscreen canvas, for buffering image data
+			var bufferCanvas;
+			var bufferCtx;
+			
+			// Game variables
+			var socket; // the user's socket
+			var mySide;		// which side the player will be on - left (0) or right (1)
+			var user = {	// info about the user
+				username: "",
+				pos: {
+					x: 0,
+					y: 0
+				},
+				side: -1
+			};
+			var otherUser = { // info about the other enemy user
+				username: "",
+				pos: {
+					x: -64,
+					y: -64
+				},
+				side: -1
+			};
+			var puckPos = { x: 320, y: 200 }; // the position of the puck
+			
+			// Connects to the socket.io server
+			// Sets up socket event delegates for server communication
+			function connectSocket(e) {
+			
+				// Connect to socket.io
+				// The io variable is a global var from the socket.io script above
+				socket = io.connect();
+			
+				// Listen for drawImg calls, which are emitted when a new user connects
+				socket.on("drawImg", function(data) {
+					// create a new image object to hold the received image data
+					var receivedImg = new Image();
+					
+					// set up a callback to draw the received image once it loads
+					receivedImg.onload = function() {
+						// save and restore canvas state and force it draw in source-over mode
+						ctx.save();
+							ctx.globalCompositeOperation = "source-over";
+							ctx.drawImage(receivedImg, data.x, data.y, data.width, data.height);
+						ctx.restore();
+					};
+					
+					receivedImg.src = data.imgData;
+				});
+			
+				// Listen for drawImg calls, which are emitted when a new user connects
+				socket.on("msg", function(data) {
+					console.log(data.msg);
+				});
+			
+				// Listener for user connection event
+				socket.on("connect", function(){
+					console.log("Connecting...");
+					
+					// retrieve the username from the entry field to send to server
+					user.username = document.querySelector('#username').value;
+					
+					// for invalid entries, generate a random username
+					if (!user.username || user.username === "") {
+						user.username = 'user' + Math.floor(Math.random()*1000000);
+					}
+					
+					socket.emit("join", { name: user.username });
+				});
+				
+				// Listen for update data sent from the GameManager
+				socket.on("updateInfo", function(data) {
+					// GameManager tells us which object it's updating in data.object
+					switch (data.object) {
+						// For user and otherUser (the player and the opponent), we'll
+						// dynamically add all the sent keys to our userdata
+						case "user":
+							if (data.pos) {
+								user.pos = data.pos;
+							}
+							if (data.side) {
+								user.side = data.side;
+							}
+							if (data.username) {
+								user.username = data.username;
+							}
+							console.log(otherUser);
+							break;
+						case "otherUser":
+							if (data.pos) {
+								otherUser.pos = data.pos;
+							}
+							if (data.side) {
+								otherUser.side = data.side;
+							}
+							if (data.username) {
+								otherUser.username = data.username;
+							}
+							break;
+						case "puckPos":
+							puckPos = data.pos;
+							break;
+					}
+				});
+				
+				update();
+			}
+			
+			// Initialises canvas variables and emits a new draw call to other canvases
+			function init() {
+				// grab the canvas and its context
+				canvas = document.querySelector("canvas");
+				ctx = canvas.getContext("2d");
+				
+				// create the offscreen buffer canvas and grab its context
+				bufferCanvas = document.createElement("canvas");
+				bufferCtx = bufferCanvas.getContext("2d");
+				
+				// Prepare connect button for making server connection
+				document.querySelector('#connect').addEventListener('click', connectSocket);
+				
+				canvas.style.backgroundImage = "url('../media/background.png')";
+			
+				// Get canvas mouseover callbacks to update paddle position
+				canvas.addEventListener('mousemove', function(e) {
+					user.pos.x = e.layerX;
+					user.pos.y = e.layerY;
+				})
+			}
+			
+			// The main draw and update loop, which is started once a game begins
+			function update() {
+				ctx.clearRect(0, 0, canvas.width, canvas.height);
+				
+				ctx.beginPath();
+					ctx.fillStyle = "red";
+					ctx.arc(user.pos.x, user.pos.y, 20, 0, Math.PI*2);
+					ctx.fill();
+				ctx.closePath();
+				
+				ctx.beginPath();
+					ctx.fillStyle = "blue";
+					ctx.arc(otherUser.pos.x, otherUser.pos.y, 20, 0, Math.PI*2);
+					ctx.fill();
+				ctx.closePath();
+				
+				ctx.beginPath();
+					ctx.fillStyle = "black";
+					ctx.arc(puckPos.x, puckPos.y, 20, 0, Math.PI*2);
+					ctx.fill();
+				ctx.closePath();
+				
+				socket.emit("update", {pos: user.pos})
+				
+				requestAnimationFrame(update);
+			}
+			
+			window.onload = init;
+		</script>
+	</head>
+	
+	<body>
+		<label for="user">Username:</label>
+		<input id="username" name="user" type="text"/>
+		<input id="connect" type='button' value='connect'/>
+		<br />
+		<canvas width="640" height="400">Please update to an HTML5 compatible web browser :)</canvas>
+	</body>
+</html>

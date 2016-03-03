@@ -1,0 +1,22 @@
+{
+  "name": "data-sync-pt4",
+  "version": "1.0.0",
+  "description": "A simple server that streams image data between clients.",
+  "main": "./src/server.js",
+  "dependencies": {
+    "jshint": "^2.9.1",
+    "socket.io": "^1.4.5"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node ./src/server.js",
+    "pretest": "jshint ./src",
+    "test": "echo \"Test complete.\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "\u001b[A\u001b[B"
+  },
+  "author": "Jake Ben-Tovim",
+  "license": "ISC"
+}
