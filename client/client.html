@@ -4,16 +4,34 @@
 		<meta charset="utf-8" />
 		<title>Air Hockey</title>
 		<style>
+			* {
+				font-family: 'Roboto', sans-serif;
+			}
+			
+			h1, p {
+				text-align: center;
+			}
+			
 			canvas {
 				border: 1px solid black;
 				background-image: url("../media/background.png");
+				background-size: cover;
+			}
+			
+			#canvasContainer {
+				width: 100%;
+				text-align: center;
 			}
 		</style>
 		
 		<!-- Load in socket.io -->
 		<script src="/socket.io/socket.io.js"></script>
+		
+		<link href='https://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
 		<script>
 			"use strict";
+			
+			(function() {
 			
 			// Where we'll store the canvas and its context
 			var canvas;
@@ -23,16 +41,22 @@
 			var bufferCanvas;
 			var bufferCtx;
 			
+			// Other various DOM elements, generally used for gameplay/server feedback
+			var serverInfo;
+			
 			// Game variables
 			var socket; // the user's socket
-			var mySide;		// which side the player will be on - left (0) or right (1)
+			var side = {		// which side the player will be on - left (0) or right (1)
+				is: 0
+			}
 			var user = {	// info about the user
 				username: "",
 				pos: {
 					x: 0,
 					y: 0
 				},
-				side: -1
+				points: 0,
+				img: new Image()
 			};
 			var otherUser = { // info about the other enemy user
 				username: "",
@@ -40,9 +64,21 @@
 					x: -64,
 					y: -64
 				},
-				side: -1
+				points: 0,
+				img: new Image()
 			};
-			var puckPos = { x: 320, y: 200 }; // the position of the puck
+			var puck = { // info about the puck
+				pos: {
+					x: 640,
+					y: 400 
+				},
+				vel: {
+					x: 0,
+					y: 0
+				},
+				img: new Image(),
+				radius: 25
+			};
 			
 			// Connects to the socket.io server
 			// Sets up socket event delegates for server communication
@@ -51,27 +87,13 @@
 				// Connect to socket.io
 				// The io variable is a global var from the socket.io script above
 				socket = io.connect();
-			
-				// Listen for drawImg calls, which are emitted when a new user connects
-				socket.on("drawImg", function(data) {
-					// create a new image object to hold the received image data
-					var receivedImg = new Image();
-					
-					// set up a callback to draw the received image once it loads
-					receivedImg.onload = function() {
-						// save and restore canvas state and force it draw in source-over mode
-						ctx.save();
-							ctx.globalCompositeOperation = "source-over";
-							ctx.drawImage(receivedImg, data.x, data.y, data.width, data.height);
-						ctx.restore();
-					};
-					
-					receivedImg.src = data.imgData;
-				});
+				
+				// emit our starting positipon
+				socket.emit("update", {pos: user.pos})
 			
 				// Listen for drawImg calls, which are emitted when a new user connects
 				socket.on("msg", function(data) {
-					console.log(data.msg);
+					serverInfo.innerHTML = data.msg;
 				});
 			
 				// Listener for user connection event
@@ -93,98 +115,173 @@
 				socket.on("updateInfo", function(data) {
 					// GameManager tells us which object it's updating in data.object
 					switch (data.object) {
-						// For user and otherUser (the player and the opponent), we'll
-						// dynamically add all the sent keys to our userdata
+						// add all the sent keys to our userdata
 						case "user":
 							if (data.pos) {
 								user.pos = data.pos;
 							}
 							if (data.side) {
-								user.side = data.side;
+								side.is = data.side;
+								Object.freeze(side);
 							}
 							if (data.username) {
 								user.username = data.username;
 							}
-							console.log(otherUser);
 							break;
 						case "otherUser":
 							if (data.pos) {
 								otherUser.pos = data.pos;
 							}
-							if (data.side) {
-								otherUser.side = data.side;
-							}
 							if (data.username) {
 								otherUser.username = data.username;
 							}
 							break;
-						case "puckPos":
-							puckPos = data.pos;
+						case "puck":
+							puck.pos = data.pos;
+							puck.vel = data.vel;
 							break;
 					}
 				});
+			
+				// Listen for the server telling us someone scored a point
+				socket.on("scorePoint", function(data) {
+					// data.side says which side was scored on
+					// in this case, we lost the point
+					if (data.side === side.is) {
+						++otherUser.points;
+					}
+					// not scored in our goal - we must have scored it
+					else {
+						++user.points;
+					}
+					
+					// update the on-screen point display
+					userPoints.innerHTML = "<strong>" + user.username + "</strong>: " + user.points;
+					otherUserPoints.innerHTML = "<strong>" + otherUser.username + "</strong>: " + otherUser.points;
+				});
 				
-				update();
+				// Listen for a successful join, and hide the connection buttons
+				socket.on("joinSuccess", function() {
+					document.querySelector('#joinForm').style.display = "none";
+				});
+				
+				// Listen for the server telling us to begin the game
+				socket.on("beginPlay", update);
+			}
+			
+			// A helper function for updating positions
+			// Returns value clamped within min and max
+			function clamp(val, min, max) {
+				return Math.max(min, Math.min(val, max));
 			}
 			
 			// Initialises canvas variables and emits a new draw call to other canvases
 			function init() {
 				// grab the canvas and its context
-				canvas = document.querySelector("canvas");
-				ctx = canvas.getContext("2d");
+				canvas = document.querySelector('canvas');
+				ctx = canvas.getContext('2d');
 				
 				// create the offscreen buffer canvas and grab its context
-				bufferCanvas = document.createElement("canvas");
-				bufferCtx = bufferCanvas.getContext("2d");
+				bufferCanvas = document.createElement('canvas');
+				bufferCtx = bufferCanvas.getContext('2d');
 				
-				// Prepare connect button for making server connection
+				// grab any the other DOM elements we use for displaying server info
+				serverInfo = document.querySelector('#serverInfo');
+				
+				// prepare connect button for making server connection
 				document.querySelector('#connect').addEventListener('click', connectSocket);
-				
-				canvas.style.backgroundImage = "url('../media/background.png')";
 			
-				// Get canvas mouseover callbacks to update paddle position
-				canvas.addEventListener('mousemove', function(e) {
-					user.pos.x = e.layerX;
-					user.pos.y = e.layerY;
+				// get canvas mouseover callbacks to update paddle position
+				document.addEventListener('mousemove', function(e) {
+					var canvasPos = canvas.getBoundingClientRect();
+					console.log(canvasPos);
+					user.pos.x = clamp(e.x - canvasPos.left, (side.is*canvas.width/2) + user.img.width/2, (side.is*canvas.width/2)+canvas.width/2-user.img.width/2);
+					user.pos.y = clamp(e.y - canvasPos.top, user.img.width/2, canvas.height-user.img.height/2);
 				})
+				
+				// load paddle and puck icons from the server
+				user.img.src = "../media/userPaddle.png";
+				otherUser.img.src = "../media/enemyPaddle.png";
+				puck.img.src = "../media/puck.png";
+				
+				// setup canvas for drawing text
+				ctx.font = "14pt 'Roboto'";
 			}
 			
 			// The main draw and update loop, which is started once a game begins
 			function update() {
 				ctx.clearRect(0, 0, canvas.width, canvas.height);
 				
-				ctx.beginPath();
-					ctx.fillStyle = "red";
-					ctx.arc(user.pos.x, user.pos.y, 20, 0, Math.PI*2);
-					ctx.fill();
-				ctx.closePath();
+				// update puck position
+				puck.pos.x += puck.vel.x;
+				puck.pos.y += puck.vel.y;
 				
-				ctx.beginPath();
-					ctx.fillStyle = "blue";
-					ctx.arc(otherUser.pos.x, otherUser.pos.y, 20, 0, Math.PI*2);
-					ctx.fill();
-				ctx.closePath();
+				// Client will simulate puck physics here in case of some server disconnect
+				// attemp to bounce the puck off walls
+				bouncePuck();
 				
-				ctx.beginPath();
-					ctx.fillStyle = "black";
-					ctx.arc(puckPos.x, puckPos.y, 20, 0, Math.PI*2);
-					ctx.fill();
-				ctx.closePath();
+				// apply friction to the puck
+				puck.vel.x *= .9985;
+				puck.vel.y *= .9985;
 				
+				// draw the three game elements
+				ctx.drawImage(puck.img, puck.pos.x - puck.img.width/2, puck.pos.y - puck.img.height/2);
+				ctx.drawImage(user.img, user.pos.x - user.img.width/2, user.pos.y - user.img.height/2);
+				ctx.drawImage(otherUser.img, otherUser.pos.x - otherUser.img.width/2, otherUser.pos.y - otherUser.img.height/2);
+				
+				// draw the scores in the corners
+				ctx.save();
+					if (side.is === 0) {
+						ctx.fillText(user.username + ": " + user.points, 5, 25);
+						ctx.textAlign = "end";
+						ctx.fillText(otherUser.points + " :" + otherUser.username, canvas.width - 5, 25);
+					}
+					else {
+						ctx.fillText(otherUser.username + ": " + otherUser.points, 5, 25);
+						ctx.textAlign = "end";
+						ctx.fillText(user.points + " :" + user.username, canvas.width - 5, 25);
+					}
+				ctx.restore();
+				
+				// emit our position to the other user
 				socket.emit("update", {pos: user.pos})
 				
 				requestAnimationFrame(update);
 			}
+	
+			/* bouncePuck
+				checks the puck's position and bounces it off the walls
+			*/
+			function bouncePuck() {
+				// bounce left-right
+				if ((puck.pos.x - puck.radius < 0) || (puck.pos.x + puck.radius > canvas.width)) {
+					puck.vel.x *= -1;
+				}
+				
+				// bounce up-down
+				if ((puck.pos.y - puck.radius < 0) || (puck.pos.y + puck.radius > canvas.height)) {
+					puck.vel.y *= -1;
+				}
+			}
 			
 			window.onload = init;
+			})();
 		</script>
 	</head>
 	
 	<body>
-		<label for="user">Username:</label>
-		<input id="username" name="user" type="text"/>
-		<input id="connect" type='button' value='connect'/>
-		<br />
-		<canvas width="640" height="400">Please update to an HTML5 compatible web browser :)</canvas>
+		<h1>Ice Hockey!</h1>
+		
+		<p id="serverInfo">Please enter a username to connect to another player.</p>
+		
+		<p id="joinForm">
+			<label for="user">Username:</label>
+			<input id="username" name="user" type="text"/>
+			<input id="connect" type='button' value='connect'/>
+		</p>
+		
+		<div id="canvasContainer">
+			<canvas width="1280" height="800">Please update to an HTML5 compatible web browser :)</canvas>
+		</div>
 	</body>
 </html>

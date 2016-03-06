@@ -5,22 +5,305 @@
 */
 class GameManager {
 	/* Ctor
-		room: the ID on the server of the room this GameManager is managing
-		io: a reference to socket.io
-		p1: a reference to player 1's socket
-		p2: a reference to player 2's socket
+		@io: a reference to socket.io
+		@p1: a reference to player 1's socket
+		@p2: a reference to player 2's socket
 	*/
 	constructor(room, io, p1, p2) {
 		this.room = room;
 		this.io = io;	
 		this.p1 = p1;
 		this.p2 = p2;
+		
+		// hard coded game room size variables
+		this.gW = 1280;	// game width
+		this.gH = 800;	// game height
+		
+		// create the puck at its default starting values
+		this.puck = {
+			pos: {
+				x: this.gW/2,
+				y: this.gH/2
+			},
+			vel: {
+				x: 0,
+				y: 0
+			},
+			radius: 25
+		}
+		
+		// hard code a value for the sizes of the players for security (inaccessible to them)
+		this.p1.radius = this.p2.radius = 50;
+		
+		// pass each user to the main update callback 
+		this.onUpdate(p1);
+		this.onUpdate(p2);
+		
+		// set users to their starting positions
+		this.p1.pos = {
+			x: this.gW * .75,
+			y: this.gH/2
+		};
+		this.p2.pos = {
+			x: this.gW * .25,
+			y: this.gH/2
+		};
+		
+		// emit the users' positions
+		
+		// tell the users the game has begun
+		this.io.sockets.in(this.room).emit("beginPlay");
+	
+		/* update player 1's info:
+			- tell them player 2's name
+			- give them a lovely match start message
+		*/
+		this.p1.emit(
+			"updateInfo",
+			{
+				object: "otherUser",
+				username: this.p2.name
+			}
+		);
+		this.p1.emit(
+			"msg",
+			{
+				msg: "Match started, you're playing against " + this.p2.name + "."
+			}
+		);
+		
+		
+		/* update player 2's info:
+			- tell them player 1's name
+			- tell them they're player 2 (side 1)
+			- give them a lovely match start message
+		*/
+		this.p2.emit(
+			"updateInfo",
+			{
+				object: "otherUser",
+				username: this.p1.name
+			}
+		);
+		this.p2.emit(
+			"msg",
+			{
+				msg: "Match started, you're playing against " + this.p1.name + "."
+			}
+		);
+		this.p2.emit("updateInfo", { object: "user", side: 1 });
+	
+		setInterval(this.update.bind(this), 1);
+	}
+	
+	// Callback for user update - emitted by each socket each tick, position is sent to other user
+	onUpdate(socket) {
+		socket.on("update", function(data) {
+			if (socket.pos) {
+				socket.prevPos = socket.pos;
+			}
+			else {
+				socket.prevPos = data.pos;
+			}
+			
+			socket.pos = data.pos;
+			socket.broadcast.to(socket.roomName).emit("updateInfo", { object: "otherUser", pos: data.pos });
+		});
+	};
+	
+	/* distance
+		desc: gets the distance between two game objects (of the three, puck and two paddles)
+		@obj1: the first object to compare
+		@obj2: the second object to compare
+	*/
+	distance(obj1, obj2) {
+		return Math.sqrt(Math.pow(obj2.pos.x - obj1.pos.x, 2) + Math.pow(obj2.pos.y - obj1.pos.y, 2));
+	}
+	
+	/* pointDistance
+		desc: gets the distance between two {x, y} formatted objects
+		@obj1: the first object to compare
+		@obj2: the second object to compare
+	*/
+	pointDistance(obj1, obj2) {
+		return Math.sqrt(Math.pow(obj2.x - obj1.x, 2) + Math.pow(obj2.y - obj1.y, 2));
+	}
+	
+	/* vecSubtract
+		desc: returns the normalized vector from obj1 to obj2
+	*/
+	vecSubtract(obj1, obj2) {
+		// create the vector between them
+		var vec = {
+			x: obj2.pos.x - obj1.pos.x,
+			y: obj2.pos.y - obj1.pos.y
+		};
+		
+		// get the distance between these objects
+		var dist = this.distance(obj1, obj2);
+		
+		// normalize the vector
+		vec.x /= dist;
+		vec.y /= dist;
+		
+		return vec;
 	}
 	
 	/* update
 		desc: updates game physics
 	*/
 	update() {
+		// where we'll store the puck's additional velociy, should it need updating
+		var newPuckVel = {
+			x: 0,
+			y: 0
+		};
+		
+		// the impulse velocity added by each player, if any
+		var p1Impulse, p2Impulse;
+		
+		// attempt to add player 1 impulses
+		if (this.distance(this.p1, this.puck) < this.p1.radius + this.puck.radius) {
+			// get the player's speed by comparing their position to their previous position
+			var spd = this.pointDistance(this.p1.prevPos, this.p1.pos);
+			
+			// get the directional vector pointing towards the puck (impulse is in this direction)
+			p1Impulse = this.vecSubtract(this.p1, this.puck);
+			
+			// multiply directional vector by user's speed
+			p1Impulse.x *= Math.min(1.75, 1 + Math.pow(spd, 1/5));
+			p1Impulse.y *= Math.min(1.75, 1 + Math.pow(spd, 1/5));
+			
+			// add this to the overall new velocity
+			newPuckVel.x += p1Impulse.x;
+			newPuckVel.y += p1Impulse.y;
+		}
+		
+		// attempt to add player 1 impulses
+		if (this.distance(this.p2, this.puck) < this.p2.radius + this.puck.radius) {
+			// get the player's speed by comparing their position to their previous position
+			var spd = this.pointDistance(this.p2.prevPos, this.p2.pos);
+			
+			// get the directional vector pointing towards the puck (impulse is in this direction)
+			p2Impulse = this.vecSubtract(this.p2, this.puck);
+			
+			// multiply directional vector by user's speed
+			p2Impulse.x *= Math.min(1.75, 1 + Math.pow(spd, 1/5));
+			p2Impulse.y *= Math.min(1.75, 1 + Math.pow(spd, 1/5));
+			
+			// add this to the overall new velocity
+			newPuckVel.x += p2Impulse.x;
+			newPuckVel.y += p2Impulse.y;
+		}
+		
+		// output the puck's new velocity to the clients - only if it updated
+		if (p1Impulse || p2Impulse) {
+			// add our new velocity to the old
+			this.puck.vel.x += newPuckVel.x;
+			this.puck.vel.y += newPuckVel.y;
+		}
+		
+		// add to the puck's position
+		this.puck.pos.x += this.puck.vel.x;
+		this.puck.pos.y += this.puck.vel.y;
+		
+		// bouncePuck attempts to bounce the puck off the walls of the game room
+		this.bouncePuck();
+		
+		// clamp puck within room if it's not entering a goal zone
+		if (this.puckInGoalHeight()) {
+			this.puck.pos.x = this.clamp(this.puck.pos.x, this.puck.radius, this.gW - this.puck.radius);
+		}
+			
+		// see if the puck has entered someone's goal
+		this.checkForPoint();
+		
+		// but always clamp vertically
+		this.puck.pos.y = this.clamp(this.puck.pos.y, this.puck.radius, this.gH - this.puck.radius);
+		
+		// apply friction to the puck
+		this.puck.vel.x *= .9985;
+		this.puck.vel.y *= .9985;
+		
+		// clamp velocity to 0 if it's low enough
+		if (Math.abs(this.puck.vel.x) < .001){
+			this.puck.vel.x = 0;
+		}
+		if (Math.abs(this.puck.vel.y) < .001){
+			this.puck.vel.y = 0;
+		}
+		
+		// emit the new puck information to the sockets
+		this.io.sockets.in(this.room).emit("updateInfo", {
+			object: "puck",
+			pos: this.puck.pos,
+			vel: this.puck.vel
+		});
+	};
+	
+	/* checkForPoint
+		desc: checks if the puck is within one of the goals, and if so rewards a point
+	*/
+	checkForPoint() {
+		// check if the puck is within either of the goals (outside the room)
+		var goalScored = ((this.puck.pos.x < 0) || (this.puck.pos.x - this.puck.radius > this.gW));
+		
+		// if a goal was scored, determine which side, and emit the score notification
+		if (goalScored) {
+			
+			// check which side scored based on the puck's x position
+			var side;
+			
+			if (this.puck.pos.x < 0) {
+				side = 0;
+			}
+			else {
+				side = 1;
+			}
+			
+			// emit the score message containing which side scored
+			this.io.sockets.in(this.room).emit("scorePoint", {side: side});
+			
+			// move the puck back to the center with 0 velocity
+			this.puck.vel = { x: 0, y: 0 };
+			this.puck.pos = { x: this.gW/2, y: this.gH/2 };
+			
+			// emit the puck's new position to the clients
+			this.io.sockets.in(this.room).emit("updateInfo", {
+				object: "puck",
+				pos: this.puck.pos,
+				vel: this.puck.vel
+			});
+		}
+	}
+	
+	/* bouncePuck
+		desc: checks the puck's position and bounces it off the walls
+	*/
+	bouncePuck() {
+		// bounce left-right
+		if ((this.puck.pos.x - this.puck.radius < 0) || (this.puck.pos.x + this.puck.radius > this.gW)) {
+			// only bounce off wall if it's not entering a goal zone
+			if (this.puckInGoalHeight()) {
+				this.puck.vel.x *= -1;
+			}
+		}
+		
+		// bounce up-down
+		if ((this.puck.pos.y - this.puck.radius < 0) || (this.puck.pos.y + this.puck.radius > this.gH)) {
+			this.puck.vel.y *= -1;
+		}
+	}
+			
+	// A helper function used mainly for the puck
+	// Returns value clamped within min and max
+	clamp(val, min, max) {
+		return Math.max(min, Math.min(val, max));
+	}
+	
+	// A helper that checks if the puck is within the y range of a goal
+	puckInGoalHeight() {
+		return (this.puck.pos.y < this.gH*.35 || this.puck.pos.y > this.gH*.65);
 	}
 }
 
