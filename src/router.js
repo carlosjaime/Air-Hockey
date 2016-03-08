@@ -39,7 +39,7 @@ var router = function(request, response) {
 	
 	// close the response stream
 	response.end();
-}
+};
 
 // Export the main router as a public function
 module.exports = router;

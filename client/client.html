@@ -41,8 +41,9 @@
 			var bufferCanvas;
 			var bufferCtx;
 			
-			// Other various DOM elements, generally used for gameplay/server feedback
+			// Other various DOM and screen elements used for gameplay/server feedback
 			var serverInfo;
+			var notification;
 			
 			// Game variables
 			var socket; // the user's socket
@@ -65,7 +66,8 @@
 					y: -64
 				},
 				points: 0,
-				img: new Image()
+				img: new Image(),
+				lastTime: new Date().getTime()
 			};
 			var puck = { // info about the puck
 				pos: {
@@ -77,7 +79,8 @@
 					y: 0
 				},
 				img: new Image(),
-				radius: 25
+				radius: 25,
+				lastTime: new Date().getTime()
 			};
 			
 			// Connects to the socket.io server
@@ -129,16 +132,28 @@
 							}
 							break;
 						case "otherUser":
-							if (data.pos) {
-								otherUser.pos = data.pos;
-							}
-							if (data.username) {
-								otherUser.username = data.username;
+							// only update other user if the new data is more recent
+							if (data.time > otherUser.lastTime) {
+								if (data.pos) {
+									otherUser.pos = data.pos;
+								}
+								if (data.username) {
+									otherUser.username = data.username;
+								}
+								
+								// update their last updated time to this packet's time
+								otherUser.lastTime = data.time;
 							}
 							break;
 						case "puck":
-							puck.pos = data.pos;
-							puck.vel = data.vel;
+							// only update puck if the new data is more recent
+							if (data.time > puck.lastTime) {
+								puck.pos = data.pos;
+								puck.vel = data.vel;
+								
+								// update the puck's updated time to this packet's time
+								puck.lastTime = data.time;
+							}
 							break;
 					}
 				});
@@ -154,15 +169,30 @@
 					else {
 						++user.points;
 					}
-					
-					// update the on-screen point display
-					userPoints.innerHTML = "<strong>" + user.username + "</strong>: " + user.points;
-					otherUserPoints.innerHTML = "<strong>" + otherUser.username + "</strong>: " + otherUser.points;
 				});
 				
 				// Listen for a successful join, and hide the connection buttons
 				socket.on("joinSuccess", function() {
 					document.querySelector('#joinForm').style.display = "none";
+				});
+				
+				// Listen for a "screen notification" from the server, which displays on the canvas
+				// Notification deletes after the amount of time passed in the function
+				socket.on("notify", function(data) {
+					// update the global notification
+					notification = data.msg;
+					
+					// if the server sends a <= 0 duration, it's permanent
+					if (data.duration > 0) {
+						// reset the notification after the duration ends
+						setTimeout(function(currentNotif) {
+							// delete the notification if it hasn't been overwritten
+							if (notification === data.msg) {
+								notification = "";
+							}
+							
+						}, data.duration);
+					}
 				});
 				
 				// Listen for the server telling us to begin the game
@@ -194,7 +224,6 @@
 				// get canvas mouseover callbacks to update paddle position
 				document.addEventListener('mousemove', function(e) {
 					var canvasPos = canvas.getBoundingClientRect();
-					console.log(canvasPos);
 					user.pos.x = clamp(e.x - canvasPos.left, (side.is*canvas.width/2) + user.img.width/2, (side.is*canvas.width/2)+canvas.width/2-user.img.width/2);
 					user.pos.y = clamp(e.y - canvasPos.top, user.img.width/2, canvas.height-user.img.height/2);
 				})
@@ -221,8 +250,8 @@
 				bouncePuck();
 				
 				// apply friction to the puck
-				puck.vel.x *= .9985;
-				puck.vel.y *= .9985;
+				puck.vel.x *= 0.9975;
+				puck.vel.y *= 0.9975;
 				
 				// draw the three game elements
 				ctx.drawImage(puck.img, puck.pos.x - puck.img.width/2, puck.pos.y - puck.img.height/2);
@@ -231,6 +260,7 @@
 				
 				// draw the scores in the corners
 				ctx.save();
+					// draw the scores on the correct side depending on which side we're playing on
 					if (side.is === 0) {
 						ctx.fillText(user.username + ": " + user.points, 5, 25);
 						ctx.textAlign = "end";
@@ -246,6 +276,17 @@
 				// emit our position to the other user
 				socket.emit("update", {pos: user.pos})
 				
+				// draw the current notification from the server
+				if (notification != "") {
+					ctx.save();
+						ctx.font = "36pt Roboto";
+						ctx.textAlign = "center"
+						ctx.textBaseline = "middle";
+						ctx.fillText(notification, canvas.width/2, canvas.height/3);
+					ctx.restore();
+				}
+				
+				// request next frame
 				requestAnimationFrame(update);
 			}
 	
@@ -263,6 +304,7 @@
 					puck.vel.y *= -1;
 				}
 			}
+			
 			
 			window.onload = init;
 			})();

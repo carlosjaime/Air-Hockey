@@ -55,6 +55,22 @@ function createGame() {
 	userQueue.splice(0, 2);
 }
 
+/* cleanGames
+	desc: checks games to find finished ones and clear them out
+*/
+function cleanGames() {
+	for (var i = 0; i < currentGames.length; ++i) {
+		// grab current one
+		var curr = currentGames[i];
+		
+		// delete the game from the list if its complete
+		// just to save memory so old games don't linger in the list
+		if (curr.gameComplete) {
+			currentGames.splice(currentGames.indexOf(curr), 1);
+		}
+	}
+}
+
 // User joined - emitted after a socket is completed and processed
 var onJoined = function(socket) {
 	
@@ -109,3 +125,6 @@ io.sockets.on("connection", function(socket) {
 });
 
 console.log("Websocket server started");
+
+// start a loop to clear empty games
+setInterval(cleanGames, 1000);
