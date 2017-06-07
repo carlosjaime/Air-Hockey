@@ -319,47 +319,23 @@
 			
 		</script>
 		
-    <script>
-    (function() {
-        var
-        // Obtain a reference to the canvas element using its id.
-        htmlCanvas = document.getElementById('c'),
-        // Obtain a graphics context on the canvas element for drawing.
-        context = htmlCanvas.getContext('2d');
+   <script type="text/javascript">
+        function resize_canvas(){
+            canvas = document.getElementById("canvas");
+            if (canvas.width  < window.innerWidth)
+            {
+                canvas.width  = window.innerWidth;
+            }
 
-       // Start listening to resize events and draw canvas.
-       initialize();
-
-       function initialize() {
-           // Register an event listener to call the resizeCanvas() function 
-           // each time the window is resized.
-           window.addEventListener('resize', resizeCanvas, false);
-           // Draw canvas border for the first time.
-           resizeCanvas();
+            if (canvas.height < window.innerHeight)
+            {
+                canvas.height = window.innerHeight;
+            }
         }
-
-        // Display custom canvas. In this case it's a blue, 5 pixel 
-        // border that resizes along with the browser window.
-        function redraw() {
-           context.strokeStyle = 'blue';
-           context.lineWidth = '5';
-           context.strokeRect(0, 0, window.innerWidth, window.innerHeight);
-        }
-
-        // Runs each time the DOM window resize event fires.
-        // Resets the canvas dimensions to match window,
-        // then draws the new borders accordingly.
-        function resizeCanvas() {
-            htmlCanvas.width = window.innerWidth;
-            htmlCanvas.height = window.innerHeight;
-            redraw();
-        }
-    })();
-
     </script>
 	</head>
 	
-	<body>
+	<body onresize="resize_canvas()">
 		<h1>Ice Hockey!</h1>
 		
 		<p id="serverInfo">Please enter a username to connect to another player.</p>
@@ -371,7 +347,7 @@
 		</p>
 		
 		<div id="canvasContainer">
-			<canvas id='c'>Please update to an HTML5 compatible web browser :)</canvas>
+			<canvas id="canvas">Please update to an HTML5 compatible web browser :)</canvas>
 		</div>
 	</body>
 </html>
