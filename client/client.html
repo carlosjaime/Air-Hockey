@@ -21,8 +21,6 @@
 				border: 1px solid black;
 				background-image: url("http://sport-squad.com/images/SSA1001_topview.jpg");
 				background-size: cover;
-				background-repeat:   no-repeat;
-    				background-position: center center;  
 			}
 			
 			#canvasContainer {
@@ -315,13 +313,10 @@
 			
 			window.onload = init;
 			})();
-			
-			
 		</script>
-
 	</head>
 	
-	<body onresize="resize_canvas()">
+	<body>
 		<h1>Ice Hockey!</h1>
 		
 		<p id="serverInfo">Please enter a username to connect to another player.</p>
@@ -333,7 +328,7 @@
 		</p>
 		
 		<div id="canvasContainer">
-			<canvas style="width:auto; height:650px;">Please update to an HTML5 compatible web browser :)</canvas>
+			<canvas width="1280" height="800">Please update to an HTML5 compatible web browser :)</canvas>
 		</div>
 	</body>
 </html>
