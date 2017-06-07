@@ -318,21 +318,7 @@
 			
 			
 		</script>
-		
-   <script type="text/javascript">
-        function resize_canvas(){
-            canvas = document.getElementById("canvas");
-            if (canvas.width  < window.innerWidth)
-            {
-                canvas.width  = window.innerWidth;
-            }
 
-            if (canvas.height < window.innerHeight)
-            {
-                canvas.height = window.innerHeight;
-            }
-        }
-    </script>
 	</head>
 	
 	<body onresize="resize_canvas()">
@@ -347,7 +333,7 @@
 		</p>
 		
 		<div id="canvasContainer">
-			<canvas id="canvas">Please update to an HTML5 compatible web browser :)</canvas>
+			<canvas style="width:auto; height:650px;">Please update to an HTML5 compatible web browser :)</canvas>
 		</div>
 	</body>
 </html>
